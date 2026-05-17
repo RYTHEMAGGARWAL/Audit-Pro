@@ -10,7 +10,7 @@ const app = express();
 app.use(cors({
   origin: [
     'http://localhost:3000',
-    'https://auditpro-frontend.vercel.app', // baad mein Vercel URL se replace karna
+    'https://audit-pro-drab.vercel.app',
   ],
   credentials: true,
 }));
