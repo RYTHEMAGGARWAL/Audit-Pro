@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import axios from 'axios';
+import axios from '../api';  // ya path adjust karo
 import './Select.css';
 
 const generateFinancialYears = () => {

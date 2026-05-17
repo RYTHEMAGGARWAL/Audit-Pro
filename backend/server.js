@@ -7,7 +7,13 @@ const { startCronJob } = require('./utils/cronJob');
 
 const app = express();
 
-app.use(cors());
+app.use(cors({
+  origin: [
+    'http://localhost:3000',
+    'https://auditpro-frontend.vercel.app', // baad mein Vercel URL se replace karna
+  ],
+  credentials: true,
+}));
 app.use(express.json());
 
 app.use('/api/auth', require('./routes/authRoutes'));

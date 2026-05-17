@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import axios from 'axios';
+import axios from '../api';  // ya path adjust karo
 import './AdminPanel.css';
 
 export default function AdminPanel() {

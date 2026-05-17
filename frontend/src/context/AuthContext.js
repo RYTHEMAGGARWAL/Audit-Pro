@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import axios from 'axios';
+import axios from '../api';  // ya path adjust karo
 
 const AuthContext = createContext();
 
