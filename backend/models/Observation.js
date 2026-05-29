@@ -23,7 +23,13 @@ const observationSchema = new mongoose.Schema({
   mailThreadId: { type: String, default: '' },
   locked: { type: Boolean, default: false },
   approvalRequested: { type: Boolean, default: false },
+  closedReason: { type: String, enum: ['manual', 'time_expired'], default: 'manual' },
   approvalRequestedAt: { type: Date },
+
+  // Reopen tracking
+  reopened: { type: Boolean, default: false },       // true if observation was ever reopened
+  reopenedAt: { type: Date },                        // timestamp of last reopen (for 7-day interval calc)
+
 }, { timestamps: true });
 
 module.exports = mongoose.model('Observation', observationSchema);

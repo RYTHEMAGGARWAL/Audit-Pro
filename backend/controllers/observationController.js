@@ -64,7 +64,7 @@ exports.updateObservation = async (req, res) => {
     
     // Locked row pe sirf remarks, attachment, status allow karo
     if (existing.locked) {
-      const allowedFields = ['remarks', 'attachment', 'attachmentName', 'status', 'mailingActive'];
+    const allowedFields = ['remarks', 'attachment', 'attachmentName', 'status', 'mailingActive'];
       const hasOtherFields = Object.keys(req.body).some(k => !allowedFields.includes(k));
       if (hasOtherFields) {
         const filtered = {};
@@ -88,6 +88,7 @@ exports.updateObservation = async (req, res) => {
     observation: existing.observation, closingPeriod: existing.closingPeriod,
     personResponsible: existing.personResponsible,
     personResponsibilityAsPerAC: existing.personResponsibilityAsPerAC,
+    managerComment: existing.managerComment,
     isClosed: true, mailThreadId: existing.mailThreadId,
   };
   for (const email of allEmails) {
@@ -98,6 +99,12 @@ exports.updateObservation = async (req, res) => {
 // Extra line — har baar Closed ho toh mailingActive false
 if (req.body.status === 'Closed') {
   req.body.mailingActive = false;
+}
+
+// Reopen tracking — agar Closed → Open ho raha hai
+if (req.body.status === 'Open' && existing.status === 'Closed') {
+  req.body.reopened = true;
+  req.body.reopenedAt = new Date();
 }
 
     const obs = await Observation.findOneAndUpdate(
@@ -145,6 +152,7 @@ exports.startMailing = async (req, res) => {
       uniqueKey: obs.uniqueKey,
       area: obs.area,
       observation: obs.observation,
+      managerComment: obs.managerComment,
       closingPeriod: obs.closingPeriod,
       personResponsible: obs.personResponsible,
       personResponsibilityAsPerAC: obs.personResponsibilityAsPerAC,
@@ -153,15 +161,7 @@ exports.startMailing = async (req, res) => {
       mailThreadId,
     };
 
-    // Send initial mail to AC
-    for (const email of acEmails) {
-      try {
-        await sendReminderMail(email, { ...mailData, recipientType: 'ac' });
-        console.log(`📧 Initial AC mail sent to ${email}`);
-      } catch (e) { console.error('AC mail error:', e.message); }
-    }
-
-    // Send initial mail to PR
+    // Send initial mail to PR only (AC ko initial mail nahi jaati)
     for (const email of prEmails) {
       try {
         await sendReminderMail(email, { ...mailData, recipientType: 'pr' });
@@ -213,6 +213,8 @@ exports.approveObservation = async (req, res) => {
       approvalRequested: false,
       status: 'Open',
       closingPeriod: newClosingPeriod || obs.closingPeriod,
+      reopened: true,
+      reopenedAt: new Date(),
     }, { new: true });
 
     res.json({ message: 'Approved! Row unlocked.', obs: updated });

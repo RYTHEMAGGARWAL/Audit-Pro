@@ -15,7 +15,7 @@ const sendReminderMail = async (toEmail, data) => {
   let urgencyColor = '#3b82f6';
   let urgencyText = 'Reminder';
   let headerMsg = 'This is a reminder for your pending audit observation.';
-  let footerMsg = 'Please ensure this observation is resolved before the closing date.';
+
 
   if (data.isPasswordReset) {
   await transporter.sendMail({
@@ -37,41 +37,78 @@ const sendReminderMail = async (toEmail, data) => {
         <a href="${data.resetUrl}" style="display:inline-block;background:linear-gradient(135deg,#2563eb,#4f46e5);color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:600;">Reset Password</a>
         <p style="margin-top:20px;font-size:12px;color:#94a3b8;">If you did not request this, please ignore this email.</p>
       </div>
-      <div style="padding:16px 32px;background:#f8fafc;border-top:1px solid #e2e8f0;text-align:center;">
-        <p style="margin:0;font-size:11px;color:#94a3b8;">Automated message from AuditPro</p>
-      </div>
     </div>`,
   });
   return;
 }
 
-  if (isInitial) {
+  const isReopened = data.isReopened || false;
+  const isExpired  = data.isExpired  || false;
+  const isClosed   = data.isClosed   || false;
+
+  // ── CLOSED notification ──
+  if (isClosed) {
+    urgencyColor = '#64748b';
+    urgencyText  = 'OBSERVATION CLOSED';
+    headerMsg    = 'This audit observation has been closed.';
+
+  // ── INITIAL mail (mailing start pe) ──
+  } else if (isInitial) {
     urgencyColor = '#3b82f6';
-    urgencyText = 'New Observation Assigned';
-    headerMsg = 'A new audit observation has been assigned. Please review and take necessary action.';
-    footerMsg = 'Log in to AuditPro to view full details and update the status.';
+    urgencyText  = 'New Observation Assigned';
+    headerMsg    = 'A new audit observation has been assigned. Please review and take necessary action.';
+
+  // ── AC — Expired (overdue, normal flow) ──
+  } else if (recipientType === 'ac' && isExpired) {
+    urgencyColor = '#7c3aed';
+    urgencyText  = 'OBSERVATION EXPIRED';
+    headerMsg    = 'The audit observation deadline has passed without closure.';
+
+  // ── AC — Reopened phase ──
+  } else if (recipientType === 'ac' && isReopened) {
+    if (daysLeft <= 7) {
+      urgencyColor = '#dc2626'; urgencyText = 'URGENT — CLOSING SOON';
+      headerMsg    = 'The reopened observation is closing very soon. Immediate attention needed.';
+    } else {
+      urgencyColor = '#f59e0b'; urgencyText = 'REOPENED — ACTION REQUIRED';
+      headerMsg    = 'The audit observation has been reopened. Please monitor progress.';
+    }
+
+  // ── PR — Reopened phase ──
+  } else if (recipientType === 'pr' && isReopened) {
+    if (daysLeft <= 7) {
+      urgencyColor = '#dc2626'; urgencyText = 'URGENT — CLOSING SOON';
+      headerMsg    = 'The reopened observation is closing very soon. Immediate action required.';
+    } else {
+      urgencyColor = '#f59e0b'; urgencyText = 'REOPENED — ACTION REQUIRED';
+      headerMsg    = 'The audit observation assigned to you has been reopened.';
+    }
+
+  // ── PR — Normal phase ──
   } else if (recipientType === 'pr') {
     if (daysLeft === 0) {
       urgencyColor = '#dc2626'; urgencyText = 'CLOSING TODAY';
-      headerMsg = 'The audit observation assigned to you is closing TODAY.';
-      footerMsg = 'Immediate action required. Please update the status in AuditPro.';
-    } else if (daysLeft === 2) {
-      urgencyColor = '#ea580c'; urgencyText = 'CLOSING IN 2 DAYS';
-      headerMsg = 'The audit observation is closing in 2 days.';
-      footerMsg = 'Please take immediate action before the closing date.';
+      headerMsg    = 'The audit observation assigned to you is closing TODAY.';
+    } else if (daysLeft <= 3) {
+      urgencyColor = '#ea580c'; urgencyText = `CLOSING IN ${daysLeft} DAY${daysLeft === 1 ? '' : 'S'}`;
+      headerMsg    = `The audit observation is closing in ${daysLeft} day${daysLeft === 1 ? '' : 's'}.`;
     } else if (daysLeft === 7) {
       urgencyColor = '#f59e0b'; urgencyText = 'ACTION REQUIRED';
-      headerMsg = 'The audit observation assigned to you is closing in 7 days.';
-      footerMsg = 'Please review and take necessary action before the closing date.';
+      headerMsg    = 'The audit observation assigned to you is closing in 7 days.';
+    } else {
+      urgencyColor = '#3b82f6'; urgencyText = 'REMINDER';
+      headerMsg    = 'This is a periodic reminder for your pending audit observation.';
     }
-  } else {
-    if (daysLeft <= 7) { urgencyColor = '#ef4444'; urgencyText = 'URGENT'; }
-    else if (daysLeft <= 15) { urgencyColor = '#f59e0b'; urgencyText = 'Action Required'; }
   }
 
-  const subject = isInitial
-    ? `[AuditPro] New Assignment — ${uniqueKey}`
-    : `[AuditPro] [${urgencyText}] ${uniqueKey} — ${daysLeft} day${daysLeft === 1 ? '' : 's'} left`;
+  // ── Subject line ──
+  const subject = isClosed
+    ? `[AuditPro] [Closed] ${uniqueKey}`
+    : isInitial
+      ? `[AuditPro] New Assignment — ${uniqueKey}`
+      : isExpired
+        ? `[AuditPro] [EXPIRED] ${uniqueKey} — Deadline Passed`
+        : `[AuditPro] [${urgencyText}] ${uniqueKey} — ${daysLeft} day${daysLeft === 1 ? '' : 's'} left`;
 
   const html = `<!DOCTYPE html>
 <html>
@@ -84,7 +121,15 @@ const sendReminderMail = async (toEmail, data) => {
     </div>
     <div style="background:${urgencyColor};padding:11px 32px;">
       <span style="color:#fff;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">
-        ${isInitial ? '📋 NEW OBSERVATION ASSIGNED' : `⚠ ${urgencyText} — ${daysLeft} Day${daysLeft === 1 ? '' : 's'} Remaining`}
+        ${isClosed
+          ? '✅ OBSERVATION CLOSED'
+          : isInitial
+            ? '📋 NEW OBSERVATION ASSIGNED'
+            : isExpired
+              ? `⛔ ${urgencyText}`
+              : isReopened
+                ? `🔄 ${urgencyText} — ${daysLeft} Day${daysLeft === 1 ? '' : 's'} Remaining`
+                : `⚠ ${urgencyText} — ${daysLeft} Day${daysLeft === 1 ? '' : 's'} Remaining`}
       </span>
     </div>
     <div style="padding:24px 32px;">
@@ -103,6 +148,10 @@ const sendReminderMail = async (toEmail, data) => {
           <td style="padding:9px 14px;font-size:13px;color:#1e293b;border-bottom:1px solid #e2e8f0;">${observation || '—'}</td>
         </tr>
         <tr>
+          <td style="padding:9px 14px;font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e2e8f0;background:#f8fafc;">Management Comment</td>
+          <td style="padding:9px 14px;font-size:13px;color:#1e293b;border-bottom:1px solid #e2e8f0;">${data.managerComment || '—'}</td>
+        </tr>
+        <tr>
           <td style="padding:9px 14px;font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e2e8f0;background:#f8fafc;">Person (AC)</td>
           <td style="padding:9px 14px;font-size:13px;color:#1e293b;border-bottom:1px solid #e2e8f0;">${personResponsibilityAsPerAC || '—'}</td>
         </tr>
@@ -117,12 +166,6 @@ const sendReminderMail = async (toEmail, data) => {
           </td>
         </tr>
       </table>
-      <div style="margin-top:20px;padding:14px;background:${isInitial ? '#eff6ff' : urgencyColor + '18'};border-left:4px solid ${urgencyColor};border-radius:6px;">
-        <p style="margin:0;font-size:13px;color:#1e293b;font-weight:500;">${footerMsg}</p>
-      </div>
-    </div>
-    <div style="padding:16px 32px;background:#f8fafc;border-top:1px solid #e2e8f0;text-align:center;">
-      <p style="margin:0;font-size:11px;color:#94a3b8;">Automated message from AuditPro · Do not reply</p>
     </div>
   </div>
 </body>

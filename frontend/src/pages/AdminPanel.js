@@ -10,6 +10,19 @@ export default function AdminPanel() {
   const [approvals, setApprovals] = useState([]);
   const [allObs, setAllObs] = useState([]);
   const [obsSearch, setObsSearch] = useState('');
+  const [obsFilters, setObsFilters] = useState({ company: '', fy: '', business: '', status: '' });
+
+  const setFilter = (key, val) => setObsFilters(f => ({ ...f, [key]: val }));
+
+  const calcTAT = (row) => {
+    if (!row.closingPeriod || !row.createdAt) return null;
+    const today = new Date(); today.setHours(0,0,0,0);
+    const closing = new Date(row.closingPeriod); closing.setHours(0,0,0,0);
+    const diff = Math.ceil((closing - today) / (1000 * 60 * 60 * 24));
+    if (diff < 0) return { days: Math.abs(diff), type: 'overdue' };
+    if (diff <= 7) return { days: diff, type: 'urgent' };
+    return { days: diff, type: 'normal' };
+  };
   const [form, setForm] = useState({ firstName: '', lastName: '', username: '', email: '', password: '', role: 'auditor' });
   const [msg, setMsg] = useState({ text: '', type: '' });
   const [loading, setLoading] = useState(false);
@@ -117,6 +130,10 @@ export default function AdminPanel() {
   };
 
   const filteredObs = allObs.filter(row => {
+    if (obsFilters.company && row.company !== obsFilters.company) return false;
+    if (obsFilters.fy && row.financialYear !== obsFilters.fy) return false;
+    if (obsFilters.business && row.business !== obsFilters.business) return false;
+    if (obsFilters.status && row.status !== obsFilters.status) return false;
     if (!obsSearch) return true;
     const s = obsSearch.toLowerCase();
     return (
@@ -299,17 +316,41 @@ export default function AdminPanel() {
             </div>
           )}
 
-          {/* ALL OBSERVATIONS TAB */}
           {tab === 'observations' && (
             <div className="ap-section">
-              <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'20px', flexWrap:'wrap', gap:'12px'}}>
-                <h2>All Reports <span className="ap-count" style={{fontSize:'13px'}}>{filteredObs.length}</span></h2>
-                <input
-                  className="ap-obs-search"
-                  placeholder="🔍 Search by area, company, auditor, status..."
-                  value={obsSearch}
-                  onChange={e => setObsSearch(e.target.value)}
-                />
+              <div style={{marginBottom:'20px'}}>
+                <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:'12px', marginBottom:'14px'}}>
+                  <h2>All Reports <span className="ap-count" style={{fontSize:'13px'}}>{filteredObs.length}</span></h2>
+                  <input
+                    className="ap-obs-search"
+                    placeholder="🔍 Search by area, company, auditor, status..."
+                    value={obsSearch}
+                    onChange={e => setObsSearch(e.target.value)}
+                  />
+                </div>
+                <div style={{display:'flex', gap:'10px', flexWrap:'wrap'}}>
+                  <select className="ap-filter-select" value={obsFilters.company} onChange={e => setFilter('company', e.target.value)}>
+                    <option value="">All Companies</option>
+                    {[...new Set(allObs.map(r => r.company))].filter(Boolean).map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <select className="ap-filter-select" value={obsFilters.fy} onChange={e => setFilter('fy', e.target.value)}>
+                    <option value="">All FY</option>
+                    {[...new Set(allObs.map(r => r.financialYear))].filter(Boolean).map(f => <option key={f} value={f}>{f}</option>)}
+                  </select>
+                  <select className="ap-filter-select" value={obsFilters.business} onChange={e => setFilter('business', e.target.value)}>
+                    <option value="">All Business</option>
+                    {[...new Set(allObs.map(r => r.business))].filter(Boolean).map(b => <option key={b} value={b}>{b}</option>)}
+                  </select>
+                  <select className="ap-filter-select" value={obsFilters.status} onChange={e => setFilter('status', e.target.value)}>
+                    <option value="">All Status</option>
+                    <option value="Open">Open</option>
+                    <option value="Closed">Closed</option>
+                    <option value="Pending Approval">Pending Approval</option>
+                  </select>
+                  {(obsFilters.company || obsFilters.fy || obsFilters.business || obsFilters.status) && (
+                    <button className="ap-clear-filter" onClick={() => setObsFilters({ company:'', fy:'', business:'', status:'' })}>✕ Clear</button>
+                  )}
+                </div>
               </div>
               <div className="ap-table-wrap">
                 <table className="ap-table">
@@ -327,19 +368,22 @@ export default function AdminPanel() {
                       <th>Person Responsible</th>
                       <th>Closing Date</th>
                       <th>Status</th>
+                      <th>TAT</th>
                       <th>Mailing</th>
                       <th>Created On</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredObs.length === 0 ? (
-                      <tr><td colSpan={14} className="db-empty">No observations found.</td></tr>
-                    ) : filteredObs.map((row, i) => (
+                      <tr><td colSpan={15} className="db-empty">No observations found.</td></tr>
+                    ) : filteredObs.map((row, i) => {
+                      const tat = calcTAT(row);
+                      return (
                       <tr key={row._id}>
                         <td className="td-center" style={{color:'#6b7280', fontSize:'12px'}}>{i + 1}</td>
                         <td><span className="key-badge-admin">{row.uniqueKey || '—'}</span></td>
                         <td style={{fontSize:'12px'}}>
-                          <div style={{fontWeight:600, color:'#e2e8f0'}}>{row.user?.username || '—'}</div>
+                          <div style={{fontWeight:600}}>{row.user?.username || '—'}</div>
                           <div style={{color:'#6b7280', fontSize:'11px'}}>{row.user?.email}</div>
                         </td>
                         <td><span className="obs-chip">{row.company}</span></td>
@@ -355,6 +399,13 @@ export default function AdminPanel() {
                             {row.status}
                           </span>
                         </td>
+                        <td style={{textAlign:'center'}}>
+                          {tat ? (
+                            <span className={`tat-badge-admin ${tat.type}`}>
+                              {tat.type === 'overdue' ? `+${tat.days}d overdue` : tat.type === 'urgent' ? `${tat.days}d ⚠` : `${tat.days}d left`}
+                            </span>
+                          ) : <span style={{color:'#6b7280'}}>—</span>}
+                        </td>
                         <td>
                           {row.mailingActive
                             ? <span style={{fontSize:'10px', color:'#34d399', fontWeight:600}}>🟢 Active</span>
@@ -365,7 +416,7 @@ export default function AdminPanel() {
                           {new Date(row.createdAt).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })}
                         </td>
                       </tr>
-                    ))}
+                    )})}
                   </tbody>
                 </table>
               </div>
