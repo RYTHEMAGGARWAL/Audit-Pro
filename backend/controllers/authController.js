@@ -9,16 +9,28 @@ exports.login = async (req, res) => {
   const { email, password } = req.body;
   try {
     if (!email || !password) return res.status(400).json({ message: 'Please provide credentials' });
+
     const user = await User.findOne({
       $or: [
         { email: email.toLowerCase() },
         { username: email.toLowerCase() }
       ]
     });
+
     if (!user || !user.isActive)
       return res.status(401).json({ message: 'Invalid credentials or account disabled' });
+
     const isMatch = await user.matchPassword(password);
     if (!isMatch) return res.status(401).json({ message: 'Invalid credentials' });
+
+    // ✅ 30 din expiry check
+    let mustChange = user.mustChangePassword;
+    if (!mustChange && user.isPasswordExpired()) {
+      user.mustChangePassword = true;
+      await user.save({ validateBeforeSave: false });
+      mustChange = true;
+    }
+
     res.json({
       token: generateToken(user._id),
       user: {
@@ -26,7 +38,12 @@ exports.login = async (req, res) => {
         name: `${user.firstName} ${user.lastName}`,
         username: user.username,
         email: user.email,
-        role: user.role
+        role: user.role,
+        mustChangePassword: mustChange,
+        // ✅ kitne din baad expire hoga
+        passwordExpiresIn: user.passwordChangedAt
+          ? Math.max(0, 30 - Math.floor((Date.now() - user.passwordChangedAt.getTime()) / (1000 * 60 * 60 * 24)))
+          : null,
       }
     });
   } catch (err) {
@@ -46,10 +63,10 @@ exports.forgotPassword = async (req, res) => {
 
     const resetToken = crypto.randomBytes(32).toString('hex');
     user.resetPasswordToken = crypto.createHash('sha256').update(resetToken).digest('hex');
-    user.resetPasswordExpire = Date.now() + 30 * 60 * 1000; // 30 min
+    user.resetPasswordExpire = Date.now() + 30 * 60 * 1000;
     await user.save({ validateBeforeSave: false });
 
-    const resetUrl = `http://localhost:3000/reset-password/${resetToken}`;
+    const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password/${resetToken}`;
 
     await sendReminderMail(email, {
       isPasswordReset: true,
@@ -71,12 +88,32 @@ exports.resetPassword = async (req, res) => {
       resetPasswordExpire: { $gt: Date.now() },
     });
     if (!user) return res.status(400).json({ message: 'Invalid or expired token' });
+
     user.password = req.body.password;
     user.resetPasswordToken = undefined;
     user.resetPasswordExpire = undefined;
+    user.mustChangePassword = false;
     await user.save();
+
     res.json({ message: 'Password reset successful!' });
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};
+
+// ✅ First login / expired password change
+exports.changePassword = async (req, res) => {
+  const { newPassword } = req.body;
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    user.password = newPassword;
+    user.mustChangePassword = false;
+    await user.save();
+
+    res.json({ message: 'Password changed successfully!' });
+  } catch (err) {
+    res.status(500).json({ message: err.message || 'Server error' });
   }
 };

@@ -1,10 +1,10 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import axios from '../api';  // ya path adjust karo
+import axios from '../api';
 
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
+  const [user, setUser]   = useState(null);
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
 
@@ -27,7 +27,12 @@ export const AuthProvider = ({ children }) => {
     axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     setToken(token);
     setUser(user);
-    return user;
+    return user; // ✅ user.mustChangePassword frontend pe check hoga
+  };
+
+  // ✅ NEW: password change karne ke baad flag update karo
+  const clearMustChange = () => {
+    setUser(prev => ({ ...prev, mustChangePassword: false }));
   };
 
   const logout = () => {
@@ -38,7 +43,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, token, login, logout, loading, clearMustChange }}>
       {children}
     </AuthContext.Provider>
   );

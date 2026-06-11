@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
-// ✅ Password Policy: min 8 chars, uppercase, lowercase, number, special char
+// ✅ Password Policy
 const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#^()_\-+=])[A-Za-z\d@$!%*?&#^()_\-+=]{8,}$/;
 
 const userSchema = new mongoose.Schema({
@@ -14,17 +14,17 @@ const userSchema = new mongoose.Schema({
     required: true,
     validate: {
       validator: function (val) {
-        // Only validate plain-text (before hashing). Skip if already hashed.
-        if (val.startsWith('$2')) return true; // bcrypt hash already
+        if (val.startsWith('$2')) return true;
         return PASSWORD_REGEX.test(val);
       },
-      message:
-        'Password must be at least 8 characters and include uppercase, lowercase, number, and special character (@$!%*?&#^()_-+=)',
+      message: 'Password must be at least 8 characters and include uppercase, lowercase, number, and special character',
     },
   },
   role:      { type: String, enum: ['admin', 'auditor'], default: 'auditor' },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   isActive:  { type: Boolean, default: true },
+  mustChangePassword: { type: Boolean, default: false },
+  passwordChangedAt:  { type: Date, default: Date.now }, // ✅ NEW
   resetPasswordToken:  { type: String },
   resetPasswordExpire: { type: Date },
 }, { timestamps: true });
@@ -35,17 +35,11 @@ userSchema.virtual('name').get(function () {
 
 userSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();
-
-  // ✅ Validate policy before hashing
   if (!PASSWORD_REGEX.test(this.password)) {
-    return next(
-      new Error(
-        'Password must be at least 8 characters and include uppercase, lowercase, number, and special character'
-      )
-    );
+    return next(new Error('Password must be at least 8 characters and include uppercase, lowercase, number, and special character'));
   }
-
-  this.password = await bcrypt.hash(this.password, 12); // ✅ increased from 10 → 12
+  this.password = await bcrypt.hash(this.password, 12);
+  this.passwordChangedAt = Date.now(); // ✅ har baar password change pe update
   next();
 });
 
@@ -53,6 +47,12 @@ userSchema.methods.matchPassword = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
 };
 
-// ✅ Export regex so authController/adminController can also use it
+// ✅ 30 din check method
+userSchema.methods.isPasswordExpired = function () {
+  if (!this.passwordChangedAt) return false;
+  const daysSinceChange = (Date.now() - this.passwordChangedAt.getTime()) / (1000 * 60 * 60 * 24);
+return daysSinceChange > 30;
+};
+
 module.exports = mongoose.model('User', userSchema);
 module.exports.PASSWORD_REGEX = PASSWORD_REGEX;

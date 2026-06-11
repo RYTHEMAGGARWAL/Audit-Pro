@@ -56,7 +56,7 @@ export default function AdminPanel() {
     return { days: diff, type: 'normal' };
   };
 
-  const [form, setForm] = useState({ firstName: '', lastName: '', username: '', email: '', password: '', role: 'auditor' });
+  const [form, setForm] = useState({ firstName: '', lastName: '', username: '', email: '', password: '', role: 'auditor', mustChangePassword: true });
   const [msg, setMsg] = useState({ text: '', type: '' });
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
@@ -107,7 +107,7 @@ export default function AdminPanel() {
     try {
       await axios.post('/api/admin/create-user', form);
       showMsg(`User "${form.username}" created!`);
-      setForm({ firstName: '', lastName: '', username: '', email: '', password: '', role: 'auditor' });
+      setForm({ firstName: '', lastName: '', username: '', email: '', password: '', role: 'auditor', mustChangePassword: true });
       fetchUsers();
       setTab('users');
     } catch (err) {
