@@ -1,7 +1,39 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import axios from '../api';  // ya path adjust karo
+import axios from '../api';
 import './AdminPanel.css';
+
+// ✅ Password Policy
+const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#^()_\-+=])[A-Za-z\d@$!%*?&#^()_\-+=]{8,}$/;
+const policyChecks = [
+  { label: 'Minimum 8 characters',            test: (p) => p.length >= 8 },
+  { label: 'One uppercase letter (A-Z)',       test: (p) => /[A-Z]/.test(p) },
+  { label: 'One lowercase letter (a-z)',       test: (p) => /[a-z]/.test(p) },
+  { label: 'One number (0-9)',                 test: (p) => /\d/.test(p) },
+  { label: 'One special character (@$!%*?&…)', test: (p) => /[@$!%*?&#^()_\-+=]/.test(p) },
+];
+
+// ✅ Reusable Policy Checklist UI
+function PasswordPolicyBox({ password }) {
+  if (!password || password.length === 0) return null;
+  return (
+    <div style={{
+      background: '#f8fafc', border: '1px solid #e2e8f0',
+      borderRadius: '8px', padding: '10px 12px',
+      display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '6px',
+    }}>
+      {policyChecks.map(({ label, test }) => {
+        const ok = test(password);
+        return (
+          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px' }}>
+            <span style={{ color: ok ? '#10b981' : '#ef4444' }}>{ok ? '✓' : '✗'}</span>
+            <span style={{ color: ok ? '#10b981' : '#64748b' }}>{label}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function AdminPanel() {
   const { user, logout } = useAuth();
@@ -23,6 +55,7 @@ export default function AdminPanel() {
     if (diff <= 7) return { days: diff, type: 'urgent' };
     return { days: diff, type: 'normal' };
   };
+
   const [form, setForm] = useState({ firstName: '', lastName: '', username: '', email: '', password: '', role: 'auditor' });
   const [msg, setMsg] = useState({ text: '', type: '' });
   const [loading, setLoading] = useState(false);
@@ -30,6 +63,7 @@ export default function AdminPanel() {
   const [newDate, setNewDate] = useState({});
   const [passInputs, setPassInputs] = useState({});
   const [showPass, setShowPass] = useState({});
+  const [showCreatePass, setShowCreatePass] = useState(false);
   const [editUser, setEditUser] = useState(null);
   const [editForm, setEditForm] = useState({});
 
@@ -62,8 +96,13 @@ export default function AdminPanel() {
 
   useEffect(() => { fetchUsers(); fetchApprovals(); fetchAllObs(); }, []);
 
+  // ✅ Create User — password policy check
   const handleCreate = async (e) => {
     e.preventDefault();
+    if (!PASSWORD_REGEX.test(form.password)) {
+      showMsg('Password policy requirements poori nahi hui hain!', 'error');
+      return;
+    }
     setLoading(true);
     try {
       await axios.post('/api/admin/create-user', form);
@@ -85,9 +124,14 @@ export default function AdminPanel() {
     } catch (e) { showMsg('Error', 'error'); }
   };
 
+  // ✅ Reset Password — policy check
   const handleResetPassword = async (id, name) => {
     const newPass = passInputs[id]?.trim();
-    if (!newPass || newPass.length < 6) { showMsg('Min 6 characters daalo!', 'error'); return; }
+    if (!newPass) { showMsg('Password daalo!', 'error'); return; }
+    if (!PASSWORD_REGEX.test(newPass)) {
+      showMsg('Password policy requirements poori nahi hui hain! (8+ chars, upper, lower, number, special)', 'error');
+      return;
+    }
     if (!window.confirm(`Reset password for "${name}"?`)) return;
     try {
       await axios.put(`/api/admin/users/${id}/reset-password`, { newPassword: newPass });
@@ -235,21 +279,25 @@ export default function AdminPanel() {
                             <td><span className={`ap-badge ${u.role}`}>{u.role}</span></td>
                             <td><span className={`ap-status ${u.isActive ? 'active' : 'inactive'}`}>{u.isActive ? 'Active' : 'Inactive'}</span></td>
                             <td>
-                              <div className="ap-pass-wrap">
-                                <div className="ap-pass-input-wrap">
-                                  <input
-                                    type={showPass[u._id] ? 'text' : 'password'}
-                                    className="ap-pass-input"
-                                    placeholder="New password"
-                                    autoComplete="new-password"
-                                    value={passInputs[u._id] || ''}
-                                    onChange={e => setPassInputs(p => ({ ...p, [u._id]: e.target.value }))}
-                                  />
-                                  <button className="ap-pass-eye" type="button" onClick={() => setShowPass(s => ({ ...s, [u._id]: !s[u._id] }))}>
-                                    {showPass[u._id] ? '🙈' : '👁'}
-                                  </button>
+                              {/* ✅ Reset password with policy checklist */}
+                              <div className="ap-pass-wrap" style={{flexDirection:'column', alignItems:'flex-start', gap:'4px'}}>
+                                <div style={{display:'flex', alignItems:'center', gap:'6px'}}>
+                                  <div className="ap-pass-input-wrap">
+                                    <input
+                                      type={showPass[u._id] ? 'text' : 'password'}
+                                      className="ap-pass-input"
+                                      placeholder="New password"
+                                      autoComplete="new-password"
+                                      value={passInputs[u._id] || ''}
+                                      onChange={e => setPassInputs(p => ({ ...p, [u._id]: e.target.value }))}
+                                    />
+                                    <button className="ap-pass-eye" type="button" onClick={() => setShowPass(s => ({ ...s, [u._id]: !s[u._id] }))}>
+                                      {showPass[u._id] ? '🙈' : '👁'}
+                                    </button>
+                                  </div>
+                                  <button className="ap-reset-btn" type="button" onClick={() => handleResetPassword(u._id, u.username)}>Reset</button>
                                 </div>
-                                <button className="ap-reset-btn" type="button" onClick={() => handleResetPassword(u._id, u.username)}>Reset</button>
+                                <PasswordPolicyBox password={passInputs[u._id] || ''} />
                               </div>
                             </td>
                             <td>
@@ -283,8 +331,24 @@ export default function AdminPanel() {
                   </div>
                   <div className="ap-field">
                     <label>Password</label>
-                    <input type="password" placeholder="Min 6 characters" value={form.password} autoComplete="new-password"
-                      onChange={e => setForm(f => ({ ...f, password: e.target.value }))} required />
+                    {/* ✅ Password field with show/hide + policy box */}
+                    <div style={{position:'relative'}}>
+                      <input
+                        type={showCreatePass ? 'text' : 'password'}
+                        placeholder="Min 8 chars, upper, lower, number, special"
+                        value={form.password}
+                        autoComplete="new-password"
+                        style={{paddingRight:'36px', width:'100%'}}
+                        onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                        required
+                      />
+                      <button type="button"
+                        onClick={() => setShowCreatePass(v => !v)}
+                        style={{position:'absolute', right:'10px', top:'50%', transform:'translateY(-50%)', background:'transparent', border:'none', cursor:'pointer', fontSize:'14px'}}>
+                        {showCreatePass ? '🙈' : '👁'}
+                      </button>
+                    </div>
+                    <PasswordPolicyBox password={form.password} />
                   </div>
                   <div className="ap-field">
                     <label>First Name</label>
@@ -309,7 +373,8 @@ export default function AdminPanel() {
                     </select>
                   </div>
                 </div>
-                <button type="submit" className="ap-create-btn" disabled={loading}>
+                <button type="submit" className="ap-create-btn"
+                  disabled={loading || !PASSWORD_REGEX.test(form.password)}>
                   {loading ? <span className="spinner"></span> : '+ Create User'}
                 </button>
               </form>
@@ -356,21 +421,10 @@ export default function AdminPanel() {
                 <table className="ap-table">
                   <thead>
                     <tr>
-                      <th>S.No.</th>
-                      <th>Key</th>
-                      <th>Auditor</th>
-                      <th>Company</th>
-                      <th>FY</th>
-                      <th>Business</th>
-                      <th>Area</th>
-                      <th>Observation</th>
-                      <th>Person AC</th>
-                      <th>Person Responsible</th>
-                      <th>Closing Date</th>
-                      <th>Status</th>
-                      <th>TAT</th>
-                      <th>Mailing</th>
-                      <th>Created On</th>
+                      <th>S.No.</th><th>Key</th><th>Auditor</th><th>Company</th><th>FY</th>
+                      <th>Business</th><th>Area</th><th>Observation</th><th>Person AC</th>
+                      <th>Person Responsible</th><th>Closing Date</th><th>Status</th>
+                      <th>TAT</th><th>Mailing</th><th>Created On</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -409,8 +463,7 @@ export default function AdminPanel() {
                         <td>
                           {row.mailingActive
                             ? <span style={{fontSize:'10px', color:'#34d399', fontWeight:600}}>🟢 Active</span>
-                            : <span style={{fontSize:'10px', color:'#6b7280'}}>—</span>
-                          }
+                            : <span style={{fontSize:'10px', color:'#6b7280'}}>—</span>}
                         </td>
                         <td style={{fontSize:'11px', color:'#6b7280', whiteSpace:'nowrap'}}>
                           {new Date(row.createdAt).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })}
@@ -442,22 +495,10 @@ export default function AdminPanel() {
                         </span>
                       </div>
                       <div className="approval-details">
-                        <div className="approval-row">
-                          <span className="approval-label">Observation</span>
-                          <span className="approval-val">{obs.observation || '—'}</span>
-                        </div>
-                        <div className="approval-row">
-                          <span className="approval-label">Person AC</span>
-                          <span className="approval-val">{obs.personResponsibilityAsPerAC || '—'}</span>
-                        </div>
-                        <div className="approval-row">
-                          <span className="approval-label">Person Responsible</span>
-                          <span className="approval-val">{obs.personResponsible || '—'}</span>
-                        </div>
-                        <div className="approval-row">
-                          <span className="approval-label">Current Closing Date</span>
-                          <span className="approval-val" style={{color:'#f87171',fontWeight:600}}>{obs.closingPeriod || '—'}</span>
-                        </div>
+                        <div className="approval-row"><span className="approval-label">Observation</span><span className="approval-val">{obs.observation || '—'}</span></div>
+                        <div className="approval-row"><span className="approval-label">Person AC</span><span className="approval-val">{obs.personResponsibilityAsPerAC || '—'}</span></div>
+                        <div className="approval-row"><span className="approval-label">Person Responsible</span><span className="approval-val">{obs.personResponsible || '—'}</span></div>
+                        <div className="approval-row"><span className="approval-label">Current Closing Date</span><span className="approval-val" style={{color:'#f87171',fontWeight:600}}>{obs.closingPeriod || '—'}</span></div>
                       </div>
                       <div className="approval-actions">
                         <div className="approval-date-wrap">
